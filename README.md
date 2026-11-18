@@ -58,6 +58,28 @@ Requirements: Node.js 20.9+, a Clerk account, a Convex account.
 
    `setRole` is an internal mutation. There is deliberately no way to become admin from the app itself, so only someone with access to the Convex deployment can hand out the role.
 
+## Using the app
+
+| Page | What it does |
+| --- | --- |
+| `/` | Public landing page with the read-only tool list. |
+| `/board` | Every listed tool with condition, lender, Trusted Lender badge and availability. Filter by category, request a date range. Admins also get a Remove button on every listing. |
+| `/board/listings` | Your own listings: add, edit, remove. Shows open requests per tool. |
+| `/board/requests` | Tools you asked to borrow and their status. Open requests can be cancelled. |
+| `/board/incoming` | Requests for your tools: approve, decline, mark returned. |
+| `/admin` | Admins only: all loans and all members, with the Trusted Lender toggle. |
+
+`/board` and `/admin` are protected in `proxy.ts`, so signed-out visitors are sent to sign in before the page loads. That is only a convenience; the Convex functions behind each page check access on their own.
+
+### Loan rules
+
+- A loan moves `requested` to `approved`, `declined` or `cancelled`, and `approved` to `returned`. Any other transition is refused.
+- You cannot borrow your own tool, and you can have only one open request per tool.
+- Dates must be valid, the start cannot be in the past, and a loan lasts at most 30 days.
+- Requests and approvals that overlap an already approved loan for the same tool are refused, so a tool is never promised to two people for the same day.
+- A tool counts as "on loan" from the start date of an approved loan until the lender marks it returned. An approved loan past its end date shows as overdue.
+- Removing a listing cancels its open requests. Approved loans stay, since the tool may still be with the borrower.
+
 ## Tests
 
 ```bash
@@ -104,5 +126,6 @@ Defined in `convex/schema.ts`. Shared enums (categories, conditions, loan status
 ## Security and data minimization
 
 - The `convex` JWT template carries only `aud`, `name` and `email`. Nothing else from the Clerk profile reaches the backend.
+- Signed-in users see each other's display name only. Email addresses are stored for notifications but never returned to the browser, not even to admins.
 - The public tool list (`tools.listPublic`) returns only `name` and `category`. Owner, condition, description and document ids are dropped on the server, so they are never sent to signed-out visitors, not just hidden in the UI.
 - Secrets live only in `.env.local` (git-ignored) and in the Convex deployment's environment variables.

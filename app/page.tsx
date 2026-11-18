@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { SignInButton } from "@clerk/nextjs";
 import { Authenticated, Unauthenticated, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -27,7 +28,12 @@ export default function Home() {
               </SignInButton>
             </Unauthenticated>
             <Authenticated>
-              <p className="text-sm text-stone-500">You are signed in.</p>
+              <Link
+                href="/board"
+                className="inline-block rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
+              >
+                Open the board
+              </Link>
             </Authenticated>
           </div>
         </section>

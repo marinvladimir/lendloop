@@ -1,10 +1,47 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { SignInButton, UserButton } from "@clerk/nextjs";
-import { Authenticated, Unauthenticated } from "convex/react";
+import { Authenticated, Unauthenticated, useConvexAuth, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
-export function SiteHeader() {
+const links = [
+  { href: "/board", label: "Board" },
+  { href: "/board/listings", label: "My listings" },
+  { href: "/board/requests", label: "My requests" },
+  { href: "/board/incoming", label: "Incoming" },
+];
+
+function NavLinks() {
+  const pathname = usePathname();
+  const { isAuthenticated } = useConvexAuth();
+  const me = useQuery(api.users.me, isAuthenticated ? {} : "skip");
+  const all = me?.role === "admin" ? [...links, { href: "/admin", label: "Admin" }] : links;
+
+  return (
+    <nav className="-mb-px flex gap-1 overflow-x-auto">
+      {all.map((link) => {
+        const active = pathname === link.href;
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            className={`whitespace-nowrap border-b-2 px-3 py-3 text-sm ${
+              active
+                ? "border-emerald-600 font-medium text-stone-900 dark:text-white"
+                : "border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-200"
+            }`}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function SiteHeader({ showNav = false }: { showNav?: boolean }) {
   return (
     <header className="border-b border-stone-200 dark:border-stone-800">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
@@ -23,6 +60,13 @@ export function SiteHeader() {
           <UserButton />
         </Authenticated>
       </div>
+      {showNav && (
+        <Authenticated>
+          <div className="mx-auto max-w-5xl px-1 sm:px-4">
+            <NavLinks />
+          </div>
+        </Authenticated>
+      )}
     </header>
   );
 }

@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 type Ctx = QueryCtx | MutationCtx;
 
-export type AccessErrorCode = "UNAUTHENTICATED" | "NO_ACCOUNT" | "FORBIDDEN" | "NOT_FOUND";
+export type AccessErrorCode = "UNAUTHENTICATED" | "NO_ACCOUNT" | "FORBIDDEN" | "NOT_FOUND" | "INVALID" | "CONFLICT";
 
 export function accessError(code: AccessErrorCode, message: string) {
   return new ConvexError({ code, message });

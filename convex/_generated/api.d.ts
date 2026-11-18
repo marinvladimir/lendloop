@@ -9,7 +9,9 @@
  */
 
 import type * as access from "../access.js";
+import type * as loans from "../loans.js";
 import type * as model from "../model.js";
+import type * as rules from "../rules.js";
 import type * as seed from "../seed.js";
 import type * as tools from "../tools.js";
 import type * as users from "../users.js";
@@ -22,7 +24,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  loans: typeof loans;
   model: typeof model;
+  rules: typeof rules;
   seed: typeof seed;
   tools: typeof tools;
   users: typeof users;

@@ -65,6 +65,18 @@ export const setTrustedLender = mutation({
   },
 });
 
+export const listForAdmin = query({
+  args: {},
+  returns: v.array(
+    v.object({ _id: v.id("users"), name: v.string(), role: vRole, trustedLender: v.boolean() }),
+  ),
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const users = await ctx.db.query("users").order("desc").take(200);
+    return users.map((u) => ({ _id: u._id, name: u.name, role: u.role, trustedLender: u.trustedLender }));
+  },
+});
+
 export const setRole = internalMutation({
   args: { email: v.string(), role: vRole },
   returns: v.object({ updated: v.number() }),
