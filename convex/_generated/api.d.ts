@@ -8,7 +8,9 @@
  * @module
  */
 
-import type * as viewer from "../viewer.js";
+import type * as model from "../model.js";
+import type * as seed from "../seed.js";
+import type * as tools from "../tools.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +19,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  viewer: typeof viewer;
+  model: typeof model;
+  seed: typeof seed;
+  tools: typeof tools;
 }>;
 
 /**
