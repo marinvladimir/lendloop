@@ -8,9 +8,11 @@
  * @module
  */
 
+import type * as access from "../access.js";
 import type * as model from "../model.js";
 import type * as seed from "../seed.js";
 import type * as tools from "../tools.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -19,9 +21,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  access: typeof access;
   model: typeof model;
   seed: typeof seed;
   tools: typeof tools;
+  users: typeof users;
 }>;
 
 /**

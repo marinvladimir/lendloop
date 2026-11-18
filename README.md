@@ -50,6 +50,40 @@ Requirements: Node.js 20.9+, a Clerk account, a Convex account.
    npm run dev
    ```
 
+8. Make yourself an admin. Sign in once first so your user row exists, then:
+
+   ```bash
+   npx convex run users:setRole '{"email":"you@example.com","role":"admin"}'
+   ```
+
+   `setRole` is an internal mutation. There is deliberately no way to become admin from the app itself, so only someone with access to the Convex deployment can hand out the role.
+
+## Tests
+
+```bash
+npm test
+```
+
+Runs the Convex function tests with `convex-test` and Vitest against an in-memory backend. The access tests sign in as different users and check that every forbidden action is refused, not only that allowed ones work.
+
+## Roles and access control
+
+Two roles: `admin` and `user`. Every rule is checked inside Convex functions with the helpers in `convex/access.ts`. The UI hides buttons a user cannot use, but that is only for convenience; the backend is the source of truth.
+
+| Helper | Allows |
+| --- | --- |
+| `requireUser` | Any signed-in user that has a `users` row. |
+| `requireAdmin` | Admins only. |
+| `requireToolOwner` | Only the owner of the listing. Used for editing; admins cannot edit other people's listings. |
+| `requireToolOwnerOrAdmin` | The owner or an admin. Used for removing a listing. |
+| `requireLoanLender` | The owner of the borrowed tool. Used for approve, decline and mark returned. |
+| `requireLoanBorrower` | The borrower. Used for cancelling a request. |
+| `requireLoanParticipantOrAdmin` | Lender, borrower or admin. Used for reading a single loan. |
+
+Identity always comes from the verified Clerk token (`ctx.auth.getUserIdentity()`), matched on `tokenIdentifier`. No function accepts a user id as proof of who the caller is. Errors are thrown as `ConvexError` with a code (`UNAUTHENTICATED`, `NO_ACCOUNT`, `FORBIDDEN`, `NOT_FOUND`) so the UI can show a clear message.
+
+After sign-in the app calls `users.store`, which creates the user row on first visit and keeps name and email in sync with Clerk. New users always start as `user` with `trustedLender: false`.
+
 ## Data model
 
 Defined in `convex/schema.ts`. Shared enums (categories, conditions, loan statuses) live in `convex/model.ts` so the backend and the UI use the same values.

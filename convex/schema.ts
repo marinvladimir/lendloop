@@ -9,7 +9,9 @@ export default defineSchema({
     email: v.optional(v.string()),
     role: vRole,
     trustedLender: v.boolean(),
-  }).index("by_tokenIdentifier", ["tokenIdentifier"]),
+  })
+    .index("by_tokenIdentifier", ["tokenIdentifier"])
+    .index("by_email", ["email"]),
 
   tools: defineTable({
     ownerId: v.id("users"),
