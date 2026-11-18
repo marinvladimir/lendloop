@@ -4,6 +4,7 @@ import type { Doc } from "./_generated/dataModel";
 import { requireToolOwner, requireToolOwnerOrAdmin, requireUser } from "./access";
 import { vCategory, vCondition } from "./model";
 import { cleanText, isIsoDate, LIMITS } from "./rules";
+import { queueLoanEvent } from "./notifications";
 
 export const listPublic = query({
   args: {},
@@ -180,6 +181,7 @@ export const remove = mutation({
       .take(100);
     for (const loan of pending) {
       await ctx.db.patch("loans", loan._id, { status: "cancelled", decidedAt: now });
+      await queueLoanEvent(ctx, loan._id, "listing_removed");
     }
     return null;
   },

@@ -11,8 +11,10 @@
 import type * as access from "../access.js";
 import type * as loans from "../loans.js";
 import type * as model from "../model.js";
+import type * as notifications from "../notifications.js";
 import type * as rules from "../rules.js";
 import type * as seed from "../seed.js";
+import type * as signing from "../signing.js";
 import type * as tools from "../tools.js";
 import type * as users from "../users.js";
 
@@ -26,8 +28,10 @@ declare const fullApi: ApiFromModules<{
   access: typeof access;
   loans: typeof loans;
   model: typeof model;
+  notifications: typeof notifications;
   rules: typeof rules;
   seed: typeof seed;
+  signing: typeof signing;
   tools: typeof tools;
   users: typeof users;
 }>;

@@ -80,13 +80,63 @@ Requirements: Node.js 20.9+, a Clerk account, a Convex account.
 - A tool counts as "on loan" from the start date of an approved loan until the lender marks it returned. An approved loan past its end date shows as overdue.
 - Removing a listing cancels its open requests. Approved loans stay, since the tool may still be with the borrower.
 
+## Automation with n8n
+
+n8n runs locally in Docker (`n8n/docker-compose.yml`) next to a small Caddy gateway. Exported workflows live in `n8n/workflows/`.
+
+### Setup
+
+1. Create `n8n/.env` from `n8n/.env.example`. Generate both secrets with `openssl rand -hex 32`.
+2. Give Convex the same shared secret:
+
+   ```bash
+   npx convex env set LENDLOOP_WEBHOOK_SECRET <same value as in n8n/.env>
+   ```
+
+3. Start n8n and load the workflows:
+
+   ```bash
+   npm run n8n:up
+   npm run n8n:import
+   ```
+
+   The editor is at http://localhost:5678 (create the owner account on first visit).
+
+4. Convex runs in the cloud, so it needs a public URL to reach your local n8n. For development, a Cloudflare quick tunnel is enough and needs no account:
+
+   ```bash
+   cloudflared tunnel --url http://127.0.0.1:5680
+   npx convex env set N8N_LOAN_EVENT_WEBHOOK_URL https://<random>.trycloudflare.com/webhook/lendloop-loan-event
+   ```
+
+   The tunnel points at the gateway on port 5680, not at n8n itself. The gateway only forwards `/webhook/*` and answers 404 for everything else, so the n8n editor and REST API are never exposed. A quick tunnel gets a new URL each time it starts, so set the env var again after restarting it.
+
+### Workflow 1: loan request notification
+
+`n8n/workflows/loan-request-notification.json`
+
+```
+Convex mutation ──schedules──> deliver action ──signed POST──> tunnel ──> gateway ──> n8n webhook
+                                     │                                                    │
+                                     └── automationEvents (sent / failed) <── 2xx or error ┘
+```
+
+1. Every loan transition (`requested`, `approved`, `declined`, `cancelled_by_borrower`, `listing_removed`, `returned`) schedules `notifications.deliver` from inside the same mutation, so the notification is only queued if the change itself commits.
+2. The action builds a minimal payload: event, the recipient's name and email, the other person's display name, tool name, dates and status. The other person's email is never included.
+3. The body is signed with HMAC-SHA256 over `<timestamp>.<raw body>` and sent with `X-LendLoop-Timestamp` and `X-LendLoop-Signature` headers.
+4. In n8n, the first node after the webhook recomputes the signature over the raw request bytes, compares it in constant time and rejects anything older than five minutes. Invalid requests get a 401 and go no further.
+5. A dedupe step remembers handled `eventId`s for seven days, so a retried delivery is acknowledged without notifying anyone twice.
+6. The notification itself is a mock: n8n composes the message and records it in the execution log with the email address masked (`o***@example.com`). Swapping in an Email or Slack node is a one-node change.
+
+Delivery is retried from Convex on network errors, timeouts, 429 and 5xx responses (after 30 s, 2 min and 10 min). A 4xx such as a rejected signature is not retried, since retrying cannot fix it. Every final outcome, success or failure, is written to `automationEvents` under a unique idempotency key, so failures are visible instead of silent.
+
 ## Tests
 
 ```bash
 npm test
 ```
 
-Runs the Convex function tests with `convex-test` and Vitest against an in-memory backend. The access tests sign in as different users and check that every forbidden action is refused, not only that allowed ones work.
+Runs the Convex function tests with `convex-test` and Vitest against an in-memory backend. The access tests sign in as different users and check that every forbidden action is refused, not only that allowed ones work. The notification tests mock `fetch` and check the signature, the payload fields, retries, the no-retry case for 4xx, and that each event is recorded exactly once.
 
 ## Roles and access control
 
@@ -128,4 +178,6 @@ Defined in `convex/schema.ts`. Shared enums (categories, conditions, loan status
 - The `convex` JWT template carries only `aud`, `name` and `email`. Nothing else from the Clerk profile reaches the backend.
 - Signed-in users see each other's display name only. Email addresses are stored for notifications but never returned to the browser, not even to admins.
 - The public tool list (`tools.listPublic`) returns only `name` and `category`. Owner, condition, description and document ids are dropped on the server, so they are never sent to signed-out visitors, not just hidden in the UI.
-- Secrets live only in `.env.local` (git-ignored) and in the Convex deployment's environment variables.
+- Secrets live only in `.env.local` and `n8n/.env` (both git-ignored) and in the Convex deployment's environment variables. The exported workflow JSON reads the HMAC secret through `$env` and contains no secret values.
+- Webhooks are signed with HMAC-SHA256 and a timestamp, verified in constant time, and rejected after five minutes to limit replays.
+- Only the n8n webhook path is reachable from outside; the editor stays on localhost.

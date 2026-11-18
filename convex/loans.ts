@@ -10,6 +10,7 @@ import {
 } from "./access";
 import { vLoanStatus } from "./model";
 import { isIsoDate, rangesOverlap, validateDateRange } from "./rules";
+import { queueLoanEvent } from "./notifications";
 
 async function approvedLoansFor(ctx: QueryCtx, toolId: Id<"tools">) {
   return await ctx.db
@@ -42,7 +43,7 @@ export const request = mutation({
       throw accessError("CONFLICT", "You already have an open request for this tool.");
     }
 
-    return await ctx.db.insert("loans", {
+    const loanId = await ctx.db.insert("loans", {
       toolId: tool._id,
       ownerId: tool.ownerId,
       borrowerId: borrower._id,
@@ -50,6 +51,8 @@ export const request = mutation({
       endDate: args.endDate,
       status: "requested",
     });
+    await queueLoanEvent(ctx, loanId, "requested");
+    return loanId;
   },
 });
 
@@ -67,6 +70,7 @@ export const approve = mutation({
       throw accessError("CONFLICT", "You already approved another loan for some of those days.");
     }
     await ctx.db.patch("loans", loan._id, { status: "approved", decidedAt: Date.now() });
+    await queueLoanEvent(ctx, loan._id, "approved");
     return null;
   },
 });
@@ -78,6 +82,7 @@ export const decline = mutation({
     const { loan } = await requireLoanLender(ctx, args.loanId);
     if (loan.status !== "requested") throw accessError("CONFLICT", "Only open requests can be declined.");
     await ctx.db.patch("loans", loan._id, { status: "declined", decidedAt: Date.now() });
+    await queueLoanEvent(ctx, loan._id, "declined");
     return null;
   },
 });
@@ -89,6 +94,7 @@ export const cancel = mutation({
     const { loan } = await requireLoanBorrower(ctx, args.loanId);
     if (loan.status !== "requested") throw accessError("CONFLICT", "Only open requests can be cancelled.");
     await ctx.db.patch("loans", loan._id, { status: "cancelled", decidedAt: Date.now() });
+    await queueLoanEvent(ctx, loan._id, "cancelled_by_borrower");
     return null;
   },
 });
@@ -100,6 +106,7 @@ export const markReturned = mutation({
     const { loan } = await requireLoanLender(ctx, args.loanId);
     if (loan.status !== "approved") throw accessError("CONFLICT", "Only approved loans can be marked as returned.");
     await ctx.db.patch("loans", loan._id, { status: "returned", returnedAt: Date.now() });
+    await queueLoanEvent(ctx, loan._id, "returned");
     return null;
   },
 });
