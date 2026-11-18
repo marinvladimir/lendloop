@@ -9,9 +9,11 @@
  */
 
 import type * as access from "../access.js";
+import type * as http from "../http.js";
 import type * as loans from "../loans.js";
 import type * as model from "../model.js";
 import type * as notifications from "../notifications.js";
+import type * as reminders from "../reminders.js";
 import type * as rules from "../rules.js";
 import type * as seed from "../seed.js";
 import type * as signing from "../signing.js";
@@ -26,9 +28,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  http: typeof http;
   loans: typeof loans;
   model: typeof model;
   notifications: typeof notifications;
+  reminders: typeof reminders;
   rules: typeof rules;
   seed: typeof seed;
   signing: typeof signing;

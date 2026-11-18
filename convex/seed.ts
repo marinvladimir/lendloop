@@ -15,6 +15,40 @@ const DEMO_TOOLS: { name: string; category: Category; condition: Condition; desc
   { name: "Carpet cleaner", category: "cleaning", condition: "fair", description: "Bring your own cleaning solution." },
 ];
 
+export const overdueDemo = internalMutation({
+  args: { borrowerEmail: v.string(), daysOverdue: v.optional(v.number()) },
+  returns: v.id("loans"),
+  handler: async (ctx, args) => {
+    const borrower = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.borrowerEmail.toLowerCase()))
+      .first();
+    if (borrower === null) throw new Error("No user with that email. Sign in once first.");
+    const owner = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", DEMO_OWNER_TOKEN))
+      .unique();
+    if (owner === null) throw new Error("Run seed:run first.");
+    const tool = await ctx.db
+      .query("tools")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", owner._id))
+      .first();
+    if (tool === null) throw new Error("Run seed:run first.");
+
+    const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const late = args.daysOverdue ?? 2;
+    return await ctx.db.insert("loans", {
+      toolId: tool._id,
+      ownerId: owner._id,
+      borrowerId: borrower._id,
+      startDate: day(-late - 3),
+      endDate: day(-late),
+      status: "approved",
+      decidedAt: Date.now(),
+    });
+  },
+});
+
 export const run = internalMutation({
   args: {},
   returns: v.object({ inserted: v.number() }),

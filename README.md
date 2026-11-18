@@ -128,6 +128,30 @@ Convex mutation ──schedules──> deliver action ──signed POST──> t
 5. A dedupe step remembers handled `eventId`s for seven days, so a retried delivery is acknowledged without notifying anyone twice.
 6. The notification itself is a mock: n8n composes the message and records it in the execution log with the email address masked (`o***@example.com`). Swapping in an Email or Slack node is a one-node change.
 
+### Workflow 2: daily overdue reminders
+
+`n8n/workflows/daily-overdue-reminders.json`
+
+```
+08:00 schedule ──> sign {date} ──> POST /n8n/overdue-loans ──> one item per loan ──> mock reminder ──> sign ──> POST /n8n/reminder-status
+```
+
+1. A Schedule Trigger runs every day at 08:00 (Europe/Zagreb). There is also a manual trigger for testing.
+2. n8n signs `{"date": "YYYY-MM-DD"}` with the shared secret and posts it to the Convex HTTP action `/n8n/overdue-loans` (`convex/http.ts`). Convex verifies the signature and timestamp, accepts only a date within a day of its own clock, and returns approved loans whose end date has passed. Each entry has the borrower's name and email, the lender's name, the tool, the due date, days overdue and a `reminderKey`. Loans already reminded today are left out.
+3. For each loan n8n composes a reminder and logs it with the email masked, then signs `{loanId, date, outcome, detail}` and posts it to `/n8n/reminder-status`.
+4. Convex writes the status into `automationEvents` under the key `reminder:<loanId>:<date>`. A retry or a second run on the same day finds the existing row and changes nothing (a `failed` row can be upgraded to `sent`, never the reverse). The endpoint answers `{created: true}` the first time and `{created: false}` after that.
+
+Both HTTP Request nodes retry three times, five seconds apart. Convex rejects unsigned, wrongly signed or stale requests with 401 and malformed bodies with 400.
+
+To try it without waiting for 08:00, create an overdue loan and run the workflow once:
+
+```bash
+npx convex run seed:overdueDemo '{"borrowerEmail":"you@example.com"}'
+docker compose -f n8n/docker-compose.yml exec -e N8N_RUNNERS_BROKER_PORT=5690 n8n n8n execute --id=lendloopOverdue01
+```
+
+### Retries and failures
+
 Delivery is retried from Convex on network errors, timeouts, 429 and 5xx responses (after 30 s, 2 min and 10 min). A 4xx such as a rejected signature is not retried, since retrying cannot fix it. Every final outcome, success or failure, is written to `automationEvents` under a unique idempotency key, so failures are visible instead of silent.
 
 ## Tests
@@ -136,7 +160,7 @@ Delivery is retried from Convex on network errors, timeouts, 429 and 5xx respons
 npm test
 ```
 
-Runs the Convex function tests with `convex-test` and Vitest against an in-memory backend. The access tests sign in as different users and check that every forbidden action is refused, not only that allowed ones work. The notification tests mock `fetch` and check the signature, the payload fields, retries, the no-retry case for 4xx, and that each event is recorded exactly once.
+Runs the Convex function tests with `convex-test` and Vitest against an in-memory backend. The access tests sign in as different users and check that every forbidden action is refused, not only that allowed ones work. The notification tests mock `fetch` and check the signature, the payload fields, retries, the no-retry case for 4xx, and that each event is recorded exactly once. The reminder tests call the HTTP actions with signed, unsigned, wrongly signed and replayed requests, and check that the write-back is idempotent.
 
 ## Roles and access control
 
