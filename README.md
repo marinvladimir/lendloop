@@ -2,7 +2,9 @@
 
 A neighborhood tool-lending board. Neighbors list tools they are willing to lend, ask to borrow each other's tools for a date range, and get notifications and overdue reminders through n8n workflows.
 
-**Stack:** Next.js 16 (App Router) · TypeScript · Clerk · Convex · n8n (Docker)
+**Stack:** Next.js 16 (App Router), TypeScript, Clerk, Convex, n8n in Docker.
+
+![Board](docs/screenshots/board.png)
 
 - Public landing page with a read-only list of tools (name and category only).
 - Signed-in board with category filter and live availability, own listings, borrow requests, incoming requests.
@@ -12,6 +14,7 @@ A neighborhood tool-lending board. Neighbors list tools they are willing to lend
 
 ## Contents
 
+- [Screenshots](#screenshots)
 - [Architecture](#architecture)
 - [Project structure](#project-structure)
 - [Local setup](#local-setup)
@@ -23,6 +26,14 @@ A neighborhood tool-lending board. Neighbors list tools they are willing to lend
 - [Security and data minimization](#security-and-data-minimization)
 - [Tests](#tests)
 - [What I would change for production](#what-i-would-change-for-production)
+
+## Screenshots
+
+| Public landing page | Admin page |
+| --- | --- |
+| ![Landing page with the public tool list](docs/screenshots/landing.png) | ![Admin page with members, automation problems and all loans](docs/screenshots/admin.png) |
+
+The landing page shows only tool names and categories. The admin page lists members with the Trusted Lender toggle, failed automation runs, and every loan.
 
 ## Architecture
 
@@ -73,7 +84,9 @@ convex/
   model.ts                shared enums (categories, conditions, statuses)
   access.ts               requireUser / requireAdmin / ownership helpers
   rules.ts                date and text validation
-  users.ts tools.ts loans.ts   public queries and mutations
+  users.ts                profile sync, roles, Trusted Lender
+  tools.ts                listings and the board
+  loans.ts                borrow requests and their lifecycle
   notifications.ts        outgoing signed webhook with retries
   reminders.ts            overdue lookup and idempotent write-back
   health.ts               failure reports and the admin problem list
@@ -85,6 +98,7 @@ n8n/
   docker-compose.yml      n8n + Caddy gateway
   Caddyfile               forwards only /webhook/*
   workflows/              exported workflow JSON
+docs/screenshots/         images used in this README
 proxy.ts                  Clerk middleware and route protection
 ```
 
@@ -197,7 +211,7 @@ Convex deployment variables are set with `npx convex env set NAME value` or in t
 | Page | What it does |
 | --- | --- |
 | `/` | Public landing page with the read-only tool list. |
-| `/board` | Every listed tool with condition, lender, Trusted Lender badge and availability. Filter by category, request a date range. Admins also get a Remove button on every listing. |
+| `/board` | Every listed tool with condition, lender, Trusted Lender badge and availability. Filter by category and request a date range. Tools you already asked for show "Request sent". Admins also get a Remove button on every listing. |
 | `/board/listings` | Your own listings: add, edit, remove. Shows open requests per tool. |
 | `/board/requests` | Tools you asked to borrow and their status. Open requests can be cancelled. |
 | `/board/incoming` | Requests for your tools: approve, decline, mark returned. |
@@ -358,6 +372,8 @@ npm run build
 - **Notifications:** mocks `fetch` and checks the signature, the exact payload fields, retries on 5xx, no retry on 4xx, the failure record when configuration is missing, and that each event is recorded once.
 - **Reminders:** calls the HTTP actions with signed, unsigned, wrongly signed and replayed requests, and checks that the write-back is idempotent.
 - **Health:** the error report endpoint and that only admins can read the problem list.
+
+### Manual checks
 
 Besides the automated tests, the full flow was checked by hand against the dev deployment with two users and an admin: listing, editing and removing tools, requesting, declining, approving, returning, overdue reminders, Trusted Lender and the admin problem list. Anonymous and cross-user calls straight to the Convex API (signed-in queries, internal functions, someone else's listing or loan) and unsigned, forged or oversized requests to the HTTP actions and the n8n gateway were all refused.
 

@@ -120,7 +120,7 @@ function ToolCard({ tool, today }: { tool: BoardTool; today: string }) {
       </div>
       <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 pt-3 dark:border-stone-800">
         <Availability tool={tool} />
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {canRemove && (
             <Button
               variant="danger"
