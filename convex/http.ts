@@ -5,6 +5,7 @@ import { SIGNATURE_HEADER, TIMESTAMP_HEADER, verify } from "./signing";
 import { addDays, isIsoDate, todayUtc } from "./rules";
 
 const http = httpRouter();
+const MAX_BODY_BYTES = 16_384;
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -14,8 +15,10 @@ async function readSigned(req: Request): Promise<{ body: Record<string, unknown>
   const secret = env.LENDLOOP_WEBHOOK_SECRET;
   if (!secret) return { error: json(503, { error: "integration not configured" }) };
 
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > MAX_BODY_BYTES) return { error: json(413, { error: "body too large" }) };
   const raw = await req.text();
-  if (raw.length > 16_384) return { error: json(413, { error: "body too large" }) };
+  if (raw.length > MAX_BODY_BYTES) return { error: json(413, { error: "body too large" }) };
 
   const check = await verify(
     secret,

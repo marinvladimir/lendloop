@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Category, Condition } from "./model";
 
 const DEMO_OWNER_TOKEN = "seed|demo-owner";
+const DEMO_OWNER_EMAIL = "demo.neighbor@example.com";
 
 const DEMO_TOOLS: { name: string; category: Category; condition: Condition; description: string }[] = [
   { name: "Cordless drill", category: "power_tools", condition: "good", description: "18V with two batteries and a bit set." },
@@ -57,11 +58,15 @@ export const run = internalMutation({
       .query("users")
       .withIndex("by_tokenIdentifier", (q) => q.eq("tokenIdentifier", DEMO_OWNER_TOKEN))
       .unique();
-    if (existing !== null) return { inserted: 0 };
+    if (existing !== null) {
+      if (existing.email !== DEMO_OWNER_EMAIL) await ctx.db.patch("users", existing._id, { email: DEMO_OWNER_EMAIL });
+      return { inserted: 0 };
+    }
 
     const ownerId = await ctx.db.insert("users", {
       tokenIdentifier: DEMO_OWNER_TOKEN,
       name: "Demo Neighbor",
+      email: DEMO_OWNER_EMAIL,
       role: "user",
       trustedLender: false,
     });

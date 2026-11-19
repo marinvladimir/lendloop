@@ -96,7 +96,7 @@ describe("loan lifecycle", () => {
     expect(await codeOf(t.withIdentity(owner).mutation(api.loans.approve, { loanId }))).toBe("OK");
 
     const board = await t.withIdentity(other).query(api.tools.listBoard, { today: "2026-12-02" });
-    expect(board[0].availability).toEqual({ state: "on_loan", until: "2026-12-03" });
+    expect(board[0].availability).toEqual({ state: "on_loan", until: "2026-12-03", overdue: false });
 
     expect(await codeOf(t.withIdentity(borrower).mutation(api.loans.markReturned, { loanId }))).toBe("FORBIDDEN");
     expect(await codeOf(t.withIdentity(owner).mutation(api.loans.markReturned, { loanId }))).toBe("OK");
@@ -163,6 +163,74 @@ describe("loan lifecycle", () => {
     expect(await t.withIdentity(other).query(api.loans.incoming, { today: "2026-12-01" })).toHaveLength(0);
     expect(await codeOf(t.withIdentity(owner).query(api.loans.listAll, { today: "2026-12-01" }))).toBe("FORBIDDEN");
     expect(await t.withIdentity(admin).query(api.loans.listAll, { today: "2026-12-01" })).toHaveLength(1);
+  });
+
+  test("an overdue loan that was never returned keeps the tool blocked", async () => {
+    const { t, toolId } = await setup();
+    const loanId = await t
+      .withIdentity(borrower)
+      .mutation(api.loans.request, { toolId, startDate: "2026-12-01", endDate: "2026-12-02" });
+    await t.withIdentity(owner).mutation(api.loans.approve, { loanId });
+
+    vi.setSystemTime(new Date("2026-12-05T12:00:00Z"));
+    const later = { toolId, startDate: "2026-12-20", endDate: "2026-12-21" };
+    expect(await codeOf(t.withIdentity(other).mutation(api.loans.request, later))).toBe("CONFLICT");
+
+    const board = await t.withIdentity(other).query(api.tools.listBoard, { today: "2026-12-05" });
+    expect(board[0].availability).toEqual({ state: "on_loan", until: "2026-12-02", overdue: true });
+
+    await t.withIdentity(owner).mutation(api.loans.markReturned, { loanId });
+    expect(await codeOf(t.withIdentity(other).mutation(api.loans.request, later))).toBe("OK");
+  });
+
+  test("a request whose dates have passed cannot be approved and shows as expired", async () => {
+    const { t, toolId } = await setup();
+    const loanId = await t
+      .withIdentity(borrower)
+      .mutation(api.loans.request, { toolId, startDate: "2026-12-02", endDate: "2026-12-03" });
+
+    vi.setSystemTime(new Date("2026-12-08T12:00:00Z"));
+    expect(await codeOf(t.withIdentity(owner).mutation(api.loans.approve, { loanId }))).toBe("CONFLICT");
+    const [row] = await t.withIdentity(owner).query(api.loans.incoming, { today: "2026-12-08" });
+    expect(row.expired).toBe(true);
+    expect(await codeOf(t.withIdentity(owner).mutation(api.loans.decline, { loanId }))).toBe("OK");
+  });
+
+  test("the borrower can cancel an approved loan until it starts", async () => {
+    const { t, toolId } = await setup();
+    const future = await t
+      .withIdentity(borrower)
+      .mutation(api.loans.request, { toolId, startDate: "2026-12-10", endDate: "2026-12-11" });
+    await t.withIdentity(owner).mutation(api.loans.approve, { loanId: future });
+    const [row] = await t.withIdentity(borrower).query(api.loans.myRequests, { today: "2026-12-01" });
+    expect(row.cancellable).toBe(true);
+    expect(await codeOf(t.withIdentity(owner).mutation(api.loans.cancel, { loanId: future }))).toBe("FORBIDDEN");
+    expect(await codeOf(t.withIdentity(borrower).mutation(api.loans.cancel, { loanId: future }))).toBe("OK");
+
+    const started = await t
+      .withIdentity(borrower)
+      .mutation(api.loans.request, { toolId, startDate: "2026-12-01", endDate: "2026-12-03" });
+    await t.withIdentity(owner).mutation(api.loans.approve, { loanId: started });
+    expect(await codeOf(t.withIdentity(borrower).mutation(api.loans.cancel, { loanId: started }))).toBe("CONFLICT");
+  });
+
+  test("removing a listing also cancels approved loans that have not started", async () => {
+    const { t, toolId } = await setup();
+    const current = await t
+      .withIdentity(borrower)
+      .mutation(api.loans.request, { toolId, startDate: "2026-12-01", endDate: "2026-12-02" });
+    await t.withIdentity(owner).mutation(api.loans.approve, { loanId: current });
+    const upcoming = await t
+      .withIdentity(other)
+      .mutation(api.loans.request, { toolId, startDate: "2026-12-10", endDate: "2026-12-11" });
+    await t.withIdentity(owner).mutation(api.loans.approve, { loanId: upcoming });
+
+    await t.withIdentity(owner).mutation(api.tools.remove, { toolId });
+    const statuses = await t.run(async (ctx) => [
+      (await ctx.db.get("loans", current))?.status,
+      (await ctx.db.get("loans", upcoming))?.status,
+    ]);
+    expect(statuses).toEqual(["approved", "cancelled"]);
   });
 
   test("approved loans past their end date are flagged overdue", async () => {

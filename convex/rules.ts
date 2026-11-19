@@ -24,6 +24,10 @@ export function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function blockedUntil(loan: { endDate: string }, today: string): string {
+  return loan.endDate < today ? "9999-12-31" : loan.endDate;
+}
+
 export function rangesOverlap(a: { startDate: string; endDate: string }, b: { startDate: string; endDate: string }) {
   return a.startDate <= b.endDate && b.startDate <= a.endDate;
 }

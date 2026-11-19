@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireToolOwner, requireToolOwnerOrAdmin, requireUser } from "./access";
 import { vCategory, vCondition } from "./model";
-import { cleanText, isIsoDate, LIMITS } from "./rules";
+import { cleanText, isIsoDate, LIMITS, todayUtc } from "./rules";
 import { queueLoanEvent } from "./notifications";
 
 export const listPublic = query({
@@ -20,7 +20,7 @@ export const listPublic = query({
 
 const vAvailability = v.union(
   v.object({ state: v.literal("available"), nextBookedFrom: v.union(v.string(), v.null()) }),
-  v.object({ state: v.literal("on_loan"), until: v.string() }),
+  v.object({ state: v.literal("on_loan"), until: v.string(), overdue: v.boolean() }),
 );
 
 const vBoardTool = v.object({
@@ -42,7 +42,7 @@ async function availabilityOf(ctx: QueryCtx, tool: Doc<"tools">, today: string) 
     .withIndex("by_toolId_and_status", (q) => q.eq("toolId", tool._id).eq("status", "approved"))
     .take(50);
   const current = approved.find((loan) => loan.startDate <= today);
-  if (current) return { state: "on_loan" as const, until: current.endDate };
+  if (current) return { state: "on_loan" as const, until: current.endDate, overdue: current.endDate < today };
   const upcoming = approved.map((loan) => loan.startDate).sort()[0] ?? null;
   return { state: "available" as const, nextBookedFrom: upcoming };
 }
@@ -121,6 +121,7 @@ export const listMine = query({
         .query("loans")
         .withIndex("by_toolId_and_status", (q) => q.eq("toolId", tool._id).eq("status", "requested"))
         .take(50);
+      const live = pending.filter((loan) => loan.endDate >= today);
       result.push({
         _id: tool._id,
         name: tool.name,
@@ -128,7 +129,7 @@ export const listMine = query({
         condition: tool.condition,
         description: tool.description,
         availability: await availabilityOf(ctx, tool, today),
-        pendingRequests: pending.length,
+        pendingRequests: live.length,
       });
     }
     return result;
@@ -185,11 +186,16 @@ export const remove = mutation({
     const now = Date.now();
     await ctx.db.patch("tools", args.toolId, { removedAt: now });
 
+    const today = todayUtc();
     const pending = await ctx.db
       .query("loans")
       .withIndex("by_toolId_and_status", (q) => q.eq("toolId", args.toolId).eq("status", "requested"))
       .take(100);
-    for (const loan of pending) {
+    const upcoming = await ctx.db
+      .query("loans")
+      .withIndex("by_toolId_and_status", (q) => q.eq("toolId", args.toolId).eq("status", "approved"))
+      .take(100);
+    for (const loan of [...pending, ...upcoming.filter((l) => l.startDate > today)]) {
       await ctx.db.patch("loans", loan._id, { status: "cancelled", decidedAt: now });
       await queueLoanEvent(ctx, loan._id, "listing_removed");
     }

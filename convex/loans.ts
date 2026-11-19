@@ -9,7 +9,7 @@ import {
   requireUser,
 } from "./access";
 import { vLoanStatus } from "./model";
-import { isIsoDate, rangesOverlap, validateDateRange } from "./rules";
+import { addDays, blockedUntil, isIsoDate, rangesOverlap, todayUtc, validateDateRange } from "./rules";
 import { queueLoanEvent } from "./notifications";
 
 async function approvedLoansFor(ctx: QueryCtx, toolId: Id<"tools">) {
@@ -17,6 +17,11 @@ async function approvedLoansFor(ctx: QueryCtx, toolId: Id<"tools">) {
     .query("loans")
     .withIndex("by_toolId_and_status", (q) => q.eq("toolId", toolId).eq("status", "approved"))
     .take(100);
+}
+
+function clashesWithApproved(approved: Doc<"loans">[], range: { startDate: string; endDate: string }) {
+  const today = todayUtc();
+  return approved.some((loan) => rangesOverlap({ startDate: loan.startDate, endDate: blockedUntil(loan, today) }, range));
 }
 
 export const request = mutation({
@@ -31,7 +36,7 @@ export const request = mutation({
 
     const range = { startDate: args.startDate, endDate: args.endDate };
     const approved = await approvedLoansFor(ctx, tool._id);
-    if (approved.some((loan) => rangesOverlap(loan, range))) {
+    if (clashesWithApproved(approved, range)) {
       throw accessError("CONFLICT", "The tool is already lent out for some of those days.");
     }
 
@@ -65,9 +70,12 @@ export const approve = mutation({
     const tool = await ctx.db.get("tools", loan.toolId);
     if (tool === null || tool.removedAt !== undefined) throw accessError("NOT_FOUND", "That tool is no longer listed.");
 
+    if (loan.endDate < addDays(todayUtc(), -1)) {
+      throw accessError("CONFLICT", "The dates of this request have already passed. Decline it instead.");
+    }
     const approved = await approvedLoansFor(ctx, loan.toolId);
-    if (approved.some((other) => rangesOverlap(other, loan))) {
-      throw accessError("CONFLICT", "You already approved another loan for some of those days.");
+    if (clashesWithApproved(approved, loan)) {
+      throw accessError("CONFLICT", "The tool is already lent out for some of those days.");
     }
     await ctx.db.patch("loans", loan._id, { status: "approved", decidedAt: Date.now() });
     await queueLoanEvent(ctx, loan._id, "approved");
@@ -92,7 +100,10 @@ export const cancel = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { loan } = await requireLoanBorrower(ctx, args.loanId);
-    if (loan.status !== "requested") throw accessError("CONFLICT", "Only open requests can be cancelled.");
+    const notStarted = loan.status === "approved" && loan.startDate > todayUtc();
+    if (loan.status !== "requested" && !notStarted) {
+      throw accessError("CONFLICT", "Only open requests and loans that have not started can be cancelled.");
+    }
     await ctx.db.patch("loans", loan._id, { status: "cancelled", decidedAt: Date.now() });
     await queueLoanEvent(ctx, loan._id, "cancelled_by_borrower");
     return null;
@@ -122,6 +133,8 @@ const vLoanRow = v.object({
   endDate: v.string(),
   status: vLoanStatus,
   overdue: v.boolean(),
+  expired: v.boolean(),
+  cancellable: v.boolean(),
   activity: v.array(
     v.object({
       label: v.string(),
@@ -180,6 +193,8 @@ async function toRows(ctx: QueryCtx, loans: Doc<"loans">[], today: string) {
       endDate: loan.endDate,
       status: loan.status,
       overdue: loan.status === "approved" && loan.endDate < today,
+      expired: loan.status === "requested" && loan.endDate < today,
+      cancellable: loan.status === "requested" || (loan.status === "approved" && loan.startDate > today),
       activity: await recentActivity(ctx, loan._id),
     });
   }
