@@ -145,6 +145,10 @@ describe("loan lifecycle", () => {
     expect(
       await codeOf(t.withIdentity(borrower).mutation(api.loans.request, { toolId, startDate: "2026-12-20", endDate: "2026-12-21" })),
     ).toBe("CONFLICT");
+    const board = await t.withIdentity(borrower).query(api.tools.listBoard, { today: "2026-12-01" });
+    expect(board[0].myOpenRequest).toBe(true);
+    const othersView = await t.withIdentity(other).query(api.tools.listBoard, { today: "2026-12-01" });
+    expect(othersView[0].myOpenRequest).toBe(false);
     expect(await codeOf(t.withIdentity(owner).mutation(api.loans.cancel, { loanId }))).toBe("FORBIDDEN");
     expect(await codeOf(t.withIdentity(borrower).mutation(api.loans.cancel, { loanId }))).toBe("OK");
   });

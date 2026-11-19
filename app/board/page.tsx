@@ -136,7 +136,12 @@ function ToolCard({ tool, today }: { tool: BoardTool; today: string }) {
               Remove
             </Button>
           )}
-          {!tool.isMine && !open && (
+          {!tool.isMine && !open && tool.myOpenRequest && (
+            <Link href="/board/requests" className="text-sm text-stone-500 underline-offset-2 hover:underline">
+              Request sent
+            </Link>
+          )}
+          {!tool.isMine && !open && !tool.myOpenRequest && (
             <Button variant="secondary" onClick={() => setOpen(true)}>
               Request to borrow
             </Button>

@@ -343,8 +343,13 @@ The admin page lists these next to failed deliveries recorded by Convex itself u
 ## Tests
 
 ```bash
+npm run typecheck
+npm run lint
 npm test
+npm run build
 ```
+
+`npm run build` needs `.env.local` with at least `NEXT_PUBLIC_CONVEX_URL` and the Clerk keys. Without them it stops with "No address provided to ConvexReactClient".
 
 39 tests with `convex-test` and Vitest against an in-memory Convex backend.
 
@@ -353,6 +358,8 @@ npm test
 - **Notifications:** mocks `fetch` and checks the signature, the exact payload fields, retries on 5xx, no retry on 4xx, the failure record when configuration is missing, and that each event is recorded once.
 - **Reminders:** calls the HTTP actions with signed, unsigned, wrongly signed and replayed requests, and checks that the write-back is idempotent.
 - **Health:** the error report endpoint and that only admins can read the problem list.
+
+Besides the automated tests, the full flow was checked by hand against the dev deployment with two users and an admin: listing, editing and removing tools, requesting, declining, approving, returning, overdue reminders, Trusted Lender and the admin problem list. Anonymous and cross-user calls straight to the Convex API (signed-in queries, internal functions, someone else's listing or loan) and unsigned, forged or oversized requests to the HTTP actions and the n8n gateway were all refused.
 
 ## What I would change for production
 

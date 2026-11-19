@@ -1,6 +1,6 @@
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireToolOwner, requireToolOwnerOrAdmin, requireUser } from "./access";
 import { vCategory, vCondition } from "./model";
 import { cleanText, isIsoDate, LIMITS } from "./rules";
@@ -32,6 +32,7 @@ const vBoardTool = v.object({
   ownerName: v.string(),
   ownerTrusted: v.boolean(),
   isMine: v.boolean(),
+  myOpenRequest: v.boolean(),
   availability: vAvailability,
 });
 
@@ -44,6 +45,14 @@ async function availabilityOf(ctx: QueryCtx, tool: Doc<"tools">, today: string) 
   if (current) return { state: "on_loan" as const, until: current.endDate };
   const upcoming = approved.map((loan) => loan.startDate).sort()[0] ?? null;
   return { state: "available" as const, nextBookedFrom: upcoming };
+}
+
+async function hasOpenRequest(ctx: QueryCtx, toolId: Id<"tools">, userId: Id<"users">) {
+  const open = await ctx.db
+    .query("loans")
+    .withIndex("by_toolId_and_status", (q) => q.eq("toolId", toolId).eq("status", "requested"))
+    .take(100);
+  return open.some((loan) => loan.borrowerId === userId);
 }
 
 export const listBoard = query({
@@ -75,6 +84,7 @@ export const listBoard = query({
         ownerName: owner?.name ?? "Unknown",
         ownerTrusted: owner?.trustedLender ?? false,
         isMine: tool.ownerId === viewer._id,
+        myOpenRequest: await hasOpenRequest(ctx, tool._id, viewer._id),
         availability: await availabilityOf(ctx, tool, today),
       });
     }
