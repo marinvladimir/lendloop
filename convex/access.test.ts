@@ -8,7 +8,6 @@ import {
   requireAdmin,
   requireLoanBorrower,
   requireLoanLender,
-  requireLoanParticipantOrAdmin,
   requireToolOwner,
   requireToolOwnerOrAdmin,
   requireUser,
@@ -126,18 +125,13 @@ describe("access helpers", () => {
     const { t, loanId } = await setup();
     const lender = (who: typeof alice) => codeOf(t.withIdentity(who).run((ctx) => requireLoanLender(ctx, loanId)));
     const borrower = (who: typeof alice) => codeOf(t.withIdentity(who).run((ctx) => requireLoanBorrower(ctx, loanId)));
-    const viewer = (who: typeof alice) =>
-      codeOf(t.withIdentity(who).run((ctx) => requireLoanParticipantOrAdmin(ctx, loanId)));
 
     expect(await lender(alice)).toBe("OK");
     expect(await lender(bob)).toBe("FORBIDDEN");
     expect(await borrower(bob)).toBe("OK");
     expect(await borrower(alice)).toBe("FORBIDDEN");
-
-    const dave = { ...alice, tokenIdentifier: "test|dave", email: "dave@example.com", name: "Dave" };
-    await t.withIdentity(dave).mutation(api.users.store, {});
-    expect(await viewer(dave)).toBe("FORBIDDEN");
-    expect(await viewer(carol)).toBe("OK");
+    expect(await lender(carol)).toBe("FORBIDDEN");
+    expect(await borrower(carol)).toBe("FORBIDDEN");
   });
 
   test("unknown ids are reported as missing", async () => {

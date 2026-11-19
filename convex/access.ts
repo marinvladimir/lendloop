@@ -77,11 +77,3 @@ export async function requireLoanBorrower(ctx: Ctx, loanId: Id<"loans">) {
   if (loan.borrowerId !== user._id) throw accessError("FORBIDDEN", "Only the borrower can do that.");
   return { user, loan };
 }
-
-export async function requireLoanParticipantOrAdmin(ctx: Ctx, loanId: Id<"loans">) {
-  const user = await requireUser(ctx);
-  const loan = await getLoan(ctx, loanId);
-  const involved = loan.ownerId === user._id || loan.borrowerId === user._id;
-  if (!involved && user.role !== "admin") throw accessError("FORBIDDEN", "You are not part of this loan.");
-  return { user, loan };
-}
