@@ -11,6 +11,7 @@ A neighborhood tool-lending board. Neighbors list tools they are willing to lend
 - Two roles. Admins can remove any listing, see every loan and mark members as Trusted Lenders.
 - Every rule is enforced in Convex functions, not just in the UI.
 - Three n8n workflows: loan notifications, daily overdue reminders and an error handler. All traffic between Convex and n8n is HMAC-signed in both directions, retried on failure and recorded idempotently.
+- Each loan shows its recent automation activity, for example "Overdue reminder sent 2 days ago".
 
 ## Contents
 
@@ -34,6 +35,10 @@ A neighborhood tool-lending board. Neighbors list tools they are willing to lend
 | ![Landing page with the public tool list](docs/screenshots/landing.png) | ![Admin page with members, automation problems and all loans](docs/screenshots/admin.png) |
 
 The landing page shows only tool names and categories. The admin page lists members with the Trusted Lender toggle, failed automation runs, and every loan.
+
+![My requests with automation activity on each loan](docs/screenshots/requests.png)
+
+Every loan in My requests, Incoming and Admin shows what the automations last did for it.
 
 ## Architecture
 
@@ -213,8 +218,8 @@ Convex deployment variables are set with `npx convex env set NAME value` or in t
 | `/` | Public landing page with the read-only tool list. |
 | `/board` | Every listed tool with condition, lender, Trusted Lender badge and availability. Filter by category and request a date range. Tools you already asked for show "Request sent". Admins also get a Remove button on every listing. |
 | `/board/listings` | Your own listings: add, edit, remove. Shows open requests per tool. |
-| `/board/requests` | Tools you asked to borrow and their status. Open requests can be cancelled. |
-| `/board/incoming` | Requests for your tools: approve, decline, mark returned. |
+| `/board/requests` | Tools you asked to borrow, their status and recent automation activity. Open requests can be cancelled. |
+| `/board/incoming` | Requests for your tools with recent automation activity: approve, decline, mark returned. |
 | `/admin` | Admins only: members with the Trusted Lender toggle, automation problems, and all loans. |
 
 `/board` and `/admin` are protected in `proxy.ts`, so signed-out visitors are sent to sign in before the page loads. That is a convenience; the Convex functions behind each page check access on their own.
@@ -315,6 +320,10 @@ Both workflows above name this one as their error workflow, so any failed run (a
 
 The admin page lists these next to failed deliveries recorded by Convex itself under "Automation problems", so a broken integration is visible in the app, not only in a log.
 
+### Activity on each loan
+
+Loan rows in My requests, Incoming and Admin include the three most recent `automationEvents` for that loan, turned into a label and a time: "Lender notified 13 min ago", "Overdue reminder sent 2 days ago", or a red "Borrower notification failed". Only the label, outcome and time reach the browser. The stored `detail` text stays on the server, and the rows are only returned to the lender, the borrower or an admin, because the same queries that list the loans already check that.
+
 ### Retries
 
 | Where | What is retried | Schedule |
@@ -365,11 +374,11 @@ npm run build
 
 `npm run build` needs `.env.local` with at least `NEXT_PUBLIC_CONVEX_URL` and the Clerk keys. Without them it stops with "No address provided to ConvexReactClient".
 
-39 tests with `convex-test` and Vitest against an in-memory Convex backend.
+40 tests with `convex-test` and Vitest against an in-memory Convex backend.
 
 - **Access:** signs in as an owner, a borrower, an unrelated user and an admin, and checks that every forbidden action is refused, not only that allowed ones work.
 - **Loans:** the full lifecycle, invalid date ranges, overlapping bookings, duplicate requests and who can see which loans.
-- **Notifications:** mocks `fetch` and checks the signature, the exact payload fields, retries on 5xx, no retry on 4xx, the failure record when configuration is missing, and that each event is recorded once.
+- **Notifications:** mocks `fetch` and checks the signature, the exact payload fields, retries on 5xx, no retry on 4xx, the failure record when configuration is missing, that each event is recorded once, and that the activity shown on a loan contains no internal details.
 - **Reminders:** calls the HTTP actions with signed, unsigned, wrongly signed and replayed requests, and checks that the write-back is idempotent.
 - **Health:** the error report endpoint and that only admins can read the problem list.
 

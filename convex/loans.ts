@@ -122,7 +122,40 @@ const vLoanRow = v.object({
   endDate: v.string(),
   status: vLoanStatus,
   overdue: v.boolean(),
+  activity: v.array(
+    v.object({
+      label: v.string(),
+      outcome: v.union(v.literal("sent"), v.literal("failed")),
+      at: v.number(),
+    }),
+  ),
 });
+
+const notifiedParty: Record<string, "Lender" | "Borrower"> = {
+  requested: "Lender",
+  cancelled_by_borrower: "Lender",
+  approved: "Borrower",
+  declined: "Borrower",
+  listing_removed: "Borrower",
+  returned: "Borrower",
+};
+
+function activityLabel(event: Doc<"automationEvents">) {
+  if (event.kind === "overdue_reminder") {
+    return event.outcome === "sent" ? "Overdue reminder sent" : "Overdue reminder failed";
+  }
+  const party = notifiedParty[event.idempotencyKey.split(":")[2] ?? ""] ?? "Participant";
+  return event.outcome === "sent" ? `${party} notified` : `${party} notification failed`;
+}
+
+async function recentActivity(ctx: QueryCtx, loanId: Id<"loans">) {
+  const events = await ctx.db
+    .query("automationEvents")
+    .withIndex("by_loanId", (q) => q.eq("loanId", loanId))
+    .order("desc")
+    .take(3);
+  return events.map((event) => ({ label: activityLabel(event), outcome: event.outcome, at: event._creationTime }));
+}
 
 async function toRows(ctx: QueryCtx, loans: Doc<"loans">[], today: string) {
   const users = new Map<Id<"users">, Doc<"users"> | null>();
@@ -147,6 +180,7 @@ async function toRows(ctx: QueryCtx, loans: Doc<"loans">[], today: string) {
       endDate: loan.endDate,
       status: loan.status,
       overdue: loan.status === "approved" && loan.endDate < today,
+      activity: await recentActivity(ctx, loan._id),
     });
   }
   return rows;

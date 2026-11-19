@@ -150,6 +150,22 @@ describe("loan event webhook", () => {
     expect(approved.recipient.email).toBe("ben@example.com");
   });
 
+  test("each side sees the loan's automation activity, without internal details", async () => {
+    mockFetch(200);
+    const { t, toolId } = await setup();
+    const loanId = await t
+      .withIdentity(borrower)
+      .mutation(api.loans.request, { toolId, startDate: "2026-12-02", endDate: "2026-12-03" });
+    await t.withIdentity(owner).mutation(api.loans.approve, { loanId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await t.mutation(internal.reminders.recordReminder, { loanId, date: "2026-12-01", outcome: "failed", detail: "o***@example.com" });
+
+    const [row] = await t.withIdentity(borrower).query(api.loans.myRequests, { today: "2026-12-01" });
+    expect(row.activity.map((a) => a.label)).toEqual(["Overdue reminder failed", "Borrower notified", "Lender notified"]);
+    expect(row.activity[0]).toEqual({ label: "Overdue reminder failed", outcome: "failed", at: expect.any(Number) });
+    expect(JSON.stringify(row)).not.toContain("example.com");
+  });
+
   test("recordEvent is idempotent per key", async () => {
     const { t, toolId } = await setup();
     const loanId = await t.run(async (ctx) => {

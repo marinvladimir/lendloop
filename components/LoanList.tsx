@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "@/convex/_generated/api";
-import { Button, Empty, ErrorText, Loading, StatusBadge, errorMessage, formatRange } from "./ui";
+import { Button, Empty, ErrorText, Loading, StatusBadge, errorMessage, formatRange, timeAgo } from "./ui";
 
 export type LoanRow = FunctionReturnType<typeof api.loans.myRequests>[number];
 
@@ -52,6 +52,18 @@ function LoanItem({
         <p className="mt-1 text-sm text-stone-500">
           {formatRange(loan.startDate, loan.endDate)} · {describe(loan)}
         </p>
+        {loan.activity.length > 0 && (
+          <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            {loan.activity.map((item) => (
+              <li
+                key={`${item.label}-${item.at}`}
+                className={item.outcome === "failed" ? "text-red-600 dark:text-red-400" : "text-stone-500"}
+              >
+                {item.label} {timeAgo(item.at)}
+              </li>
+            ))}
+          </ul>
+        )}
         <ErrorText message={error} />
       </div>
       {actions.length > 0 && (
