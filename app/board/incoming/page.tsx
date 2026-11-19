@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { LoanList } from "@/components/LoanList";
+import { LoanList, type LoanAction } from "@/components/LoanList";
 import { PageTitle, localToday } from "@/components/ui";
 
 export default function IncomingPage() {
@@ -18,15 +18,34 @@ export default function IncomingPage() {
         loans={loans}
         empty="Nobody has asked to borrow your tools yet."
         describe={(loan) => `requested by ${loan.borrowerName}`}
-        actions={(loan) => {
+        actions={(loan): LoanAction[] => {
+          const declineAction: LoanAction = {
+            label: "Decline",
+            variant: "danger",
+            done: `Declined. ${loan.borrowerName} has been told.`,
+            run: () => decline({ loanId: loan._id }),
+          };
+          if (loan.status === "requested" && loan.expired) return [declineAction];
           if (loan.status === "requested") {
             return [
-              { label: "Decline", variant: "danger", run: () => decline({ loanId: loan._id }) },
-              { label: "Approve", variant: "primary", run: () => approve({ loanId: loan._id }) },
+              declineAction,
+              {
+                label: "Approve",
+                variant: "primary",
+                done: `Approved. ${loan.borrowerName} has been told.`,
+                run: () => approve({ loanId: loan._id }),
+              },
             ];
           }
           if (loan.status === "approved") {
-            return [{ label: "Mark returned", variant: "secondary", run: () => markReturned({ loanId: loan._id }) }];
+            return [
+              {
+                label: "Mark returned",
+                variant: "secondary",
+                done: `Marked "${loan.toolName}" as returned`,
+                run: () => markReturned({ loanId: loan._id }),
+              },
+            ];
           }
           return [];
         }}

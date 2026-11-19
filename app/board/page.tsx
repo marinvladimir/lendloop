@@ -7,18 +7,23 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import { CATEGORIES, CATEGORY_LABELS, type Category } from "@/convex/model";
 import { useMe } from "@/components/RequireAccount";
+import { useToast } from "@/components/Toaster";
 import {
   Button,
   CategoryBadge,
+  ConfirmButton,
   Empty,
   ErrorText,
-  Loading,
   PageTitle,
+  SkeletonCards,
   TrustedBadge,
+  cardClass,
+  cardHoverClass,
   errorMessage,
   formatDate,
   inputClass,
   localToday,
+  stagger,
 } from "@/components/ui";
 
 type BoardTool = FunctionReturnType<typeof api.tools.listBoard>[number];
@@ -40,7 +45,7 @@ export default function BoardPage() {
         }
       />
 
-      <div className="mb-6 flex flex-wrap gap-2">
+      <div className="mb-6 flex animate-fade-up flex-wrap gap-2" style={stagger(1)}>
         <FilterChip active={category === undefined} onClick={() => setCategory(undefined)}>
           All
         </FilterChip>
@@ -52,13 +57,13 @@ export default function BoardPage() {
       </div>
 
       {tools === undefined ? (
-        <Loading />
+        <SkeletonCards />
       ) : tools.length === 0 ? (
-        <Empty>No tools in this category yet.</Empty>
+        <Empty icon="⌕">No tools in this category yet.</Empty>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2">
-          {tools.map((tool) => (
-            <ToolCard key={tool._id} tool={tool} today={today} />
+        <ul key={category ?? "all"} className="grid gap-4 sm:grid-cols-2">
+          {tools.map((tool, i) => (
+            <ToolCard key={tool._id} tool={tool} today={today} index={i} />
           ))}
         </ul>
       )}
@@ -70,10 +75,11 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   return (
     <button
       onClick={onClick}
-      className={`rounded-full px-3 py-1 text-sm ${
+      aria-pressed={active}
+      className={`rounded-full px-3.5 py-1.5 text-sm transition-all duration-200 active:scale-95 ${
         active
-          ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900"
-          : "bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700"
+          ? "bg-stone-900 text-white shadow-sm dark:bg-white dark:text-stone-900"
+          : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50 hover:ring-stone-300 dark:bg-stone-900 dark:text-stone-300 dark:ring-stone-800 dark:hover:bg-stone-800"
       }`}
     >
       {children}
@@ -82,34 +88,46 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
 }
 
 function Availability({ tool }: { tool: BoardTool }) {
-  if (tool.availability.state === "on_loan") {
-    return <span className="text-xs font-medium text-amber-700 dark:text-amber-400">On loan until {formatDate(tool.availability.until)}</span>;
+  const a = tool.availability;
+  if (a.state === "on_loan") {
+    return a.overdue ? (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+        Overdue since {formatDate(a.until)}
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        On loan until {formatDate(a.until)}
+      </span>
+    );
   }
   return (
-    <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+      <span className="relative flex h-1.5 w-1.5">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      </span>
       Available
-      {tool.availability.nextBookedFrom && (
-        <span className="font-normal text-stone-500"> · booked from {formatDate(tool.availability.nextBookedFrom)}</span>
-      )}
+      {a.nextBookedFrom && <span className="font-normal text-stone-500">· booked from {formatDate(a.nextBookedFrom)}</span>}
     </span>
   );
 }
 
-function ToolCard({ tool, today }: { tool: BoardTool; today: string }) {
+function ToolCard({ tool, today, index }: { tool: BoardTool; today: string; index: number }) {
   const me = useMe();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const remove = useMutation(api.tools.remove);
   const canRemove = me.role === "admin" && !tool.isMine;
 
   return (
-    <li className="flex flex-col gap-3 rounded-xl border border-stone-200 p-4 dark:border-stone-800">
+    <li className={`${cardClass} ${cardHoverClass} flex animate-fade-up flex-col gap-3 p-5`} style={stagger(index)}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-medium">{tool.name}</h2>
-          <p className="mt-0.5 text-xs text-stone-500">
-            Condition: {tool.condition}
-          </p>
+          <p className="mt-0.5 text-xs capitalize text-stone-500">Condition: {tool.condition}</p>
         </div>
         <CategoryBadge category={tool.category} />
       </div>
@@ -122,22 +140,25 @@ function ToolCard({ tool, today }: { tool: BoardTool; today: string }) {
         <Availability tool={tool} />
         <div className="flex items-center gap-2">
           {canRemove && (
-            <Button
-              variant="danger"
-              onClick={async () => {
-                if (!confirm(`Remove "${tool.name}" from the board?`)) return;
+            <ConfirmButton
+              label="Remove"
+              confirmLabel="Remove listing"
+              onConfirm={async () => {
                 try {
                   await remove({ toolId: tool._id });
+                  toast(`Removed "${tool.name}" from the board`);
                 } catch (e) {
                   setError(errorMessage(e));
                 }
               }}
-            >
-              Remove
-            </Button>
+            />
           )}
           {!tool.isMine && !open && tool.myOpenRequest && (
-            <Link href="/board/requests" className="text-sm text-stone-500 underline-offset-2 hover:underline">
+            <Link
+              href="/board/requests"
+              className="inline-flex items-center gap-1 text-sm text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline dark:hover:text-stone-200"
+            >
+              <span aria-hidden className="text-emerald-600">✓</span>
               Request sent
             </Link>
           )}
@@ -148,38 +169,31 @@ function ToolCard({ tool, today }: { tool: BoardTool; today: string }) {
           )}
         </div>
       </div>
-      {open && <RequestForm toolId={tool._id} today={today} onDone={() => setOpen(false)} />}
+      {open && <RequestForm tool={tool} today={today} onDone={() => setOpen(false)} />}
       <ErrorText message={error} />
     </li>
   );
 }
 
-function RequestForm({ toolId, today, onDone }: { toolId: BoardTool["_id"]; today: string; onDone: () => void }) {
+function RequestForm({ tool, today, onDone }: { tool: BoardTool; today: string; onDone: () => void }) {
+  const toast = useToast();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const request = useMutation(api.loans.request);
 
-  if (sent) {
-    return (
-      <p className="text-sm text-emerald-700 dark:text-emerald-400">
-        Request sent. Track it under <Link className="underline" href="/board/requests">My requests</Link>.
-      </p>
-    );
-  }
-
   return (
     <form
-      className="flex flex-col gap-3 rounded-lg bg-stone-50 p-3 dark:bg-stone-900"
+      className="flex animate-pop-in flex-col gap-3 rounded-xl bg-stone-50 p-3 ring-1 ring-stone-200 dark:bg-stone-950 dark:ring-stone-800"
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
         setError(null);
         try {
-          await request({ toolId, startDate, endDate });
-          setSent(true);
+          await request({ toolId: tool._id, startDate, endDate });
+          toast(`Request sent to ${tool.ownerName}`);
+          onDone();
         } catch (err) {
           setError(errorMessage(err));
         } finally {
@@ -216,10 +230,10 @@ function RequestForm({ toolId, today, onDone }: { toolId: BoardTool["_id"]; toda
       </div>
       <ErrorText message={error} />
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onDone}>
+        <Button type="button" variant="ghost" onClick={onDone} disabled={busy}>
           Cancel
         </Button>
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" loading={busy}>
           Send request
         </Button>
       </div>

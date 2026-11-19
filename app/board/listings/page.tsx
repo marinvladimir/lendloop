@@ -5,17 +5,22 @@ import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import { CATEGORIES, CATEGORY_LABELS, CONDITIONS, type Category, type Condition } from "@/convex/model";
+import { useToast } from "@/components/Toaster";
 import {
   Button,
   CategoryBadge,
+  ConfirmButton,
   Empty,
   ErrorText,
-  Loading,
   PageTitle,
+  SkeletonRows,
+  cardClass,
+  cardHoverClass,
   errorMessage,
   formatDate,
   inputClass,
   localToday,
+  stagger,
 } from "@/components/ui";
 
 type MyTool = FunctionReturnType<typeof api.tools.listMine>[number];
@@ -26,6 +31,7 @@ const emptyTool: ToolInput = { name: "", category: "power_tools", condition: "go
 export default function ListingsPage() {
   const tools = useQuery(api.tools.listMine, { today: localToday() });
   const create = useMutation(api.tools.create);
+  const toast = useToast();
   const [adding, setAdding] = useState(false);
 
   return (
@@ -37,7 +43,7 @@ export default function ListingsPage() {
       />
 
       {adding && (
-        <div className="mb-6 rounded-xl border border-stone-200 p-4 dark:border-stone-800">
+        <div className={`${cardClass} mb-6 animate-pop-in p-5`}>
           <h2 className="mb-3 font-medium">New listing</h2>
           <ToolForm
             initial={emptyTool}
@@ -46,19 +52,27 @@ export default function ListingsPage() {
             onSubmit={async (values) => {
               await create(values);
               setAdding(false);
+              toast(`"${values.name.trim()}" is now on the board`);
             }}
           />
         </div>
       )}
 
       {tools === undefined ? (
-        <Loading />
+        <SkeletonRows />
       ) : tools.length === 0 ? (
-        !adding && <Empty>You have not listed anything yet.</Empty>
+        !adding && (
+          <Empty icon="＋">
+            You have not listed anything yet.
+            <Button className="mt-2" onClick={() => setAdding(true)}>
+              List your first tool
+            </Button>
+          </Empty>
+        )
       ) : (
         <ul className="flex flex-col gap-3">
-          {tools.map((tool) => (
-            <ListingRow key={tool._id} tool={tool} />
+          {tools.map((tool, i) => (
+            <ListingRow key={tool._id} tool={tool} index={i} />
           ))}
         </ul>
       )}
@@ -66,7 +80,8 @@ export default function ListingsPage() {
   );
 }
 
-function ListingRow({ tool }: { tool: MyTool }) {
+function ListingRow({ tool, index }: { tool: MyTool; index: number }) {
+  const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const update = useMutation(api.tools.update);
@@ -74,7 +89,7 @@ function ListingRow({ tool }: { tool: MyTool }) {
 
   if (editing) {
     return (
-      <li className="rounded-xl border border-stone-200 p-4 dark:border-stone-800">
+      <li className={`${cardClass} animate-pop-in p-5`}>
         <ToolForm
           initial={tool}
           submitLabel="Save changes"
@@ -82,6 +97,7 @@ function ListingRow({ tool }: { tool: MyTool }) {
           onSubmit={async (values) => {
             await update({ toolId: tool._id, ...values });
             setEditing(false);
+            toast("Changes saved");
           }}
         />
       </li>
@@ -89,15 +105,22 @@ function ListingRow({ tool }: { tool: MyTool }) {
   }
 
   return (
-    <li className="flex flex-col gap-2 rounded-xl border border-stone-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-stone-800">
+    <li
+      className={`${cardClass} ${cardHoverClass} flex animate-fade-up flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between`}
+      style={stagger(index)}
+    >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-medium">{tool.name}</h2>
           <CategoryBadge category={tool.category} />
         </div>
         <p className="mt-1 text-xs text-stone-500">
-          Condition: {tool.condition} ·{" "}
-          {tool.availability.state === "on_loan" ? `On loan until ${formatDate(tool.availability.until)}` : "Available"}
+          <span className="capitalize">Condition: {tool.condition}</span> ·{" "}
+          {tool.availability.state === "on_loan"
+            ? tool.availability.overdue
+              ? `Overdue since ${formatDate(tool.availability.until)}`
+              : `On loan until ${formatDate(tool.availability.until)}`
+            : "Available"}
           {tool.pendingRequests > 0 && (
             <span className="font-medium text-amber-700 dark:text-amber-400">
               {" "}
@@ -107,23 +130,22 @@ function ListingRow({ tool }: { tool: MyTool }) {
         </p>
         <ErrorText message={error} />
       </div>
-      <div className="flex shrink-0 gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Button variant="secondary" onClick={() => setEditing(true)}>
           Edit
         </Button>
-        <Button
-          variant="danger"
-          onClick={async () => {
-            if (!confirm(`Remove "${tool.name}"? Open requests for it will be cancelled.`)) return;
+        <ConfirmButton
+          label="Remove"
+          confirmLabel="Remove and cancel requests"
+          onConfirm={async () => {
             try {
               await remove({ toolId: tool._id });
+              toast(`Removed "${tool.name}"`);
             } catch (e) {
               setError(errorMessage(e));
             }
           }}
-        >
-          Remove
-        </Button>
+        />
       </div>
     </li>
   );
@@ -223,7 +245,7 @@ function ToolForm({
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" loading={busy}>
           {submitLabel}
         </Button>
       </div>

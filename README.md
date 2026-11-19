@@ -224,14 +224,23 @@ Convex deployment variables are set with `npx convex env set NAME value` or in t
 
 `/board` and `/admin` are protected in `proxy.ts`, so signed-out visitors are sent to sign in before the page loads. That is a convenience; the Convex functions behind each page check access on their own.
 
+### Interface details
+
+- Every action gives feedback with a short toast ("Request sent to Olivia", "Approved. Ben has been told.").
+- Removing a listing is a two-step button (Remove, then Remove listing or Keep) instead of a browser dialog.
+- Lists show skeleton placeholders while loading and animate in. All motion is turned off for users who set "reduce motion" in their system.
+- Light and dark mode follow the system setting, and every page works down to phone width without horizontal scrolling.
+
 ### Loan rules
 
-- A loan moves from `requested` to `approved`, `declined` or `cancelled`, and from `approved` to `returned`. Any other transition is refused.
+- A loan moves from `requested` to `approved`, `declined` or `cancelled`, and from `approved` to `returned` (or `cancelled` by the borrower before it starts). Any other transition is refused.
 - You cannot borrow your own tool, and you can have only one open request per tool.
 - Dates must be valid, the start cannot be in the past, and a loan lasts at most 30 days.
 - Requests and approvals that overlap an already approved loan for the same tool are refused, so a tool is never promised to two people for the same day.
-- A tool counts as on loan from the start date of an approved loan until the lender marks it returned. An approved loan past its end date shows as overdue.
-- Removing a listing cancels its open requests and notifies the borrowers. Approved loans stay, since the tool may still be with the borrower.
+- A tool counts as on loan from the start date of an approved loan until the lender marks it returned. An approved loan past its end date shows as overdue, and it keeps the tool blocked for any new dates until it is marked returned, because the tool is still with the borrower.
+- A request whose dates have already passed shows as expired. It can be declined but not approved.
+- The borrower can cancel an open request, or an approved loan that has not started yet. The lender is notified either way.
+- Removing a listing cancels its open requests and any approved loans that have not started, and notifies the borrowers. Loans already in progress stay, since the tool may still be with the borrower.
 
 ## Roles and access control
 
@@ -374,17 +383,19 @@ npm run build
 
 `npm run build` needs `.env.local` with at least `NEXT_PUBLIC_CONVEX_URL` and the Clerk keys. Without them it stops with "No address provided to ConvexReactClient".
 
-40 tests with `convex-test` and Vitest against an in-memory Convex backend.
+44 tests with `convex-test` and Vitest against an in-memory Convex backend.
 
 - **Access:** signs in as an owner, a borrower, an unrelated user and an admin, and checks that every forbidden action is refused, not only that allowed ones work.
-- **Loans:** the full lifecycle, invalid date ranges, overlapping bookings, duplicate requests and who can see which loans.
+- **Loans:** the full lifecycle, invalid date ranges, overlapping bookings, overdue loans blocking new dates, expired requests, cancelling before the start, listing removal, duplicate requests and who can see which loans.
 - **Notifications:** mocks `fetch` and checks the signature, the exact payload fields, retries on 5xx, no retry on 4xx, the failure record when configuration is missing, that each event is recorded once, and that the activity shown on a loan contains no internal details.
 - **Reminders:** calls the HTTP actions with signed, unsigned, wrongly signed and replayed requests, and checks that the write-back is idempotent.
 - **Health:** the error report endpoint and that only admins can read the problem list.
 
-### Manual checks
+### Manual and browser checks
 
-Besides the automated tests, the full flow was checked by hand against the dev deployment with two users and an admin: listing, editing and removing tools, requesting, declining, approving, returning, overdue reminders, Trusted Lender and the admin problem list. Anonymous and cross-user calls straight to the Convex API (signed-in queries, internal functions, someone else's listing or loan) and unsigned, forged or oversized requests to the HTTP actions and the n8n gateway were all refused.
+A headless browser pass visits every page as a signed-out visitor, a regular user and an admin, in light mode, dark mode and at phone width, and fails on console errors, uncaught exceptions or horizontal overflow. A second scripted pass drives the UI itself: creating, editing and removing a listing (including the two-step confirm), requesting a tool, checking the toasts and cancelling the request.
+
+Besides that, the full flow was checked by hand against the dev deployment with two users and an admin: listing, editing and removing tools, requesting, declining, approving, returning, overdue reminders, Trusted Lender and the admin problem list. Anonymous and cross-user calls straight to the Convex API (signed-in queries, internal functions, someone else's listing or loan) and unsigned, forged or oversized requests to the HTTP actions and the n8n gateway were all refused.
 
 ## What I would change for production
 

@@ -21,8 +21,8 @@ export function RequireAccount({ children }: { children: ReactNode }) {
   const me = useQuery(api.users.me, isAuthenticated ? {} : "skip");
 
   if (isLoading || (isAuthenticated && me === undefined)) return <Loading />;
-  if (!isAuthenticated) return <p className="text-sm text-stone-500">Please sign in to continue.</p>;
-  if (me === null || me === undefined) return <p className="text-sm text-stone-500">Setting up your account…</p>;
+  if (!isAuthenticated) return <p className="animate-fade-in text-sm text-stone-500">Please sign in to continue.</p>;
+  if (me === null || me === undefined) return <Loading label="Setting up your account…" />;
 
   return <MeContext.Provider value={me}>{children}</MeContext.Provider>;
 }

@@ -17,8 +17,15 @@ export default function MyRequestsPage() {
         empty="You have not asked to borrow anything yet."
         describe={(loan) => `from ${loan.ownerName}`}
         actions={(loan) =>
-          loan.status === "requested"
-            ? [{ label: "Cancel request", variant: "danger", run: () => cancel({ loanId: loan._id }) }]
+          loan.cancellable
+            ? [
+                {
+                  label: loan.status === "approved" ? "Cancel loan" : "Cancel request",
+                  variant: "danger",
+                  done: `Cancelled. ${loan.ownerName} has been told.`,
+                  run: () => cancel({ loanId: loan._id }),
+                },
+              ]
             : []
         }
       />
