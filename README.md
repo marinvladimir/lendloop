@@ -150,6 +150,14 @@ npx convex run seed:overdueDemo '{"borrowerEmail":"you@example.com"}'
 docker compose -f n8n/docker-compose.yml exec -e N8N_RUNNERS_BROKER_PORT=5690 n8n n8n execute --id=lendloopOverdue01
 ```
 
+### Workflow 3: error handler
+
+`n8n/workflows/error-handler.json`
+
+Both workflows above name this one as their error workflow, so any failed run (a node throwing, Convex unreachable after all retries, a bad payload) starts it. It summarizes the failure (workflow, failed node, execution id, error message with any email address replaced by `[email]`), signs it and posts it to the Convex HTTP action `/n8n/workflow-error`. Convex stores it in `integrationFailures`, keyed by execution id so a retried report is stored once.
+
+The admin page has an "Automation problems" list that merges these n8n failures with failed deliveries recorded by Convex itself, so a broken integration shows up in the app and not only in a log nobody reads.
+
 ### Retries and failures
 
 Delivery is retried from Convex on network errors, timeouts, 429 and 5xx responses (after 30 s, 2 min and 10 min). A 4xx such as a rejected signature is not retried, since retrying cannot fix it. Every final outcome, success or failure, is written to `automationEvents` under a unique idempotency key, so failures are visible instead of silent.
@@ -160,7 +168,7 @@ Delivery is retried from Convex on network errors, timeouts, 429 and 5xx respons
 npm test
 ```
 
-Runs the Convex function tests with `convex-test` and Vitest against an in-memory backend. The access tests sign in as different users and check that every forbidden action is refused, not only that allowed ones work. The notification tests mock `fetch` and check the signature, the payload fields, retries, the no-retry case for 4xx, and that each event is recorded exactly once. The reminder tests call the HTTP actions with signed, unsigned, wrongly signed and replayed requests, and check that the write-back is idempotent.
+Runs the Convex function tests with `convex-test` and Vitest against an in-memory backend. The access tests sign in as different users and check that every forbidden action is refused, not only that allowed ones work. The notification tests mock `fetch` and check the signature, the payload fields, retries, the no-retry case for 4xx, and that each event is recorded exactly once. The reminder tests call the HTTP actions with signed, unsigned, wrongly signed and replayed requests, and check that the write-back is idempotent. The health tests cover the error report endpoint and check that only admins can read the problem list.
 
 ## Roles and access control
 
@@ -190,6 +198,7 @@ Defined in `convex/schema.ts`. Shared enums (categories, conditions, loan status
 | `tools` | A listing: owner, name, category, condition, short description. Removing a listing sets `removedAt` instead of deleting it, so loan history keeps pointing at a real tool. |
 | `loans` | A borrow request for a date range and its lifecycle: `requested`, then `approved` / `declined` / `cancelled`, then `returned`. Dates are stored as `YYYY-MM-DD` strings so they compare correctly as text. `ownerId` is copied from the tool so "incoming requests" is a single index lookup. |
 | `automationEvents` | Log of what the n8n workflows did for a loan (notification sent, reminder sent, failure). `idempotencyKey` is unique per action so a retried workflow cannot write the same event twice. |
+| `integrationFailures` | Failed n8n runs reported by the error workflow, one row per execution. |
 
 ## How auth works
 

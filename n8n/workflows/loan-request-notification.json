@@ -290,7 +290,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all"
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "lendloopErrors01"
   },
   "pinData": {},
   "tags": []

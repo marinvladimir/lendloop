@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as loans from "../loans.js";
 import type * as model from "../model.js";
@@ -28,6 +29,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  health: typeof health;
   http: typeof http;
   loans: typeof loans;
   model: typeof model;

@@ -1,0 +1,99 @@
+{
+  "id": "lendloopErrors01",
+  "name": "LendLoop: error handler",
+  "active": false,
+  "nodes": [
+    {
+      "id": "c1",
+      "name": "When another workflow fails",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "c2",
+      "name": "Summarize and sign",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst e = $input.first().json;\n\nconst workflow = (e.workflow && e.workflow.name) || 'unknown workflow';\nconst executionId = (e.execution && e.execution.id) ? String(e.execution.id) : `trigger-${(e.workflow && e.workflow.id) || 'unknown'}-${Date.now()}`;\nconst node = (e.execution && e.execution.lastNodeExecuted) || (e.trigger && e.trigger.error && e.trigger.error.node && e.trigger.error.node.name) || null;\nconst rawMessage = (e.execution && e.execution.error && e.execution.error.message) || (e.trigger && e.trigger.error && e.trigger.error.message) || 'Unknown error';\nconst message = String(rawMessage).replace(/[\\w.+-]+@[\\w-]+\\.[\\w.]+/g, '[email]').slice(0, 500);\n\nconsole.error(`[workflow-error] ${workflow} / ${node || '-'} / execution ${executionId}: ${message}`);\n\nconst body = JSON.stringify({ executionId, workflow, node, message });\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst signature = 'sha256=' + crypto.createHmac('sha256', $env.LENDLOOP_WEBHOOK_SECRET).update(timestamp + '.' + body).digest('hex');\n\nreturn [{ json: { executionId, workflow, node, message, body, timestamp, signature } }];\n"
+      }
+    },
+    {
+      "id": "c3",
+      "name": "Report to Convex",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CONVEX_SITE_URL }}/n8n/workflow-error",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-LendLoop-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-LendLoop-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "When another workflow fails": {
+      "main": [
+        [
+          {
+            "node": "Summarize and sign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize and sign": {
+      "main": [
+        [
+          {
+            "node": "Report to Convex",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "tags": []
+}

@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "n8n:up": "docker compose -f n8n/docker-compose.yml up -d",
-    "n8n:import": "docker compose -f n8n/docker-compose.yml exec -T n8n sh -c 'n8n import:workflow --separate --input=/workflows && n8n publish:workflow --id=lendloopLoanEvent1 && n8n publish:workflow --id=lendloopOverdue01'"
+    "n8n:import": "docker compose -f n8n/docker-compose.yml exec -T n8n sh -c 'n8n import:workflow --separate --input=/workflows && n8n publish:workflow --id=lendloopErrors01 && n8n publish:workflow --id=lendloopLoanEvent1 && n8n publish:workflow --id=lendloopOverdue01'"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.25",

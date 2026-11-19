@@ -47,5 +47,14 @@ export default defineSchema({
     detail: v.optional(v.string()),
   })
     .index("by_idempotencyKey", ["idempotencyKey"])
-    .index("by_loanId", ["loanId"]),
+    .index("by_loanId", ["loanId"])
+    .index("by_outcome", ["outcome"]),
+
+  integrationFailures: defineTable({
+    source: v.literal("n8n"),
+    externalId: v.string(),
+    workflow: v.string(),
+    node: v.optional(v.string()),
+    message: v.string(),
+  }).index("by_externalId", ["externalId"]),
 });

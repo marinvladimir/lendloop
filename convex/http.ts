@@ -78,4 +78,28 @@ http.route({
   }),
 });
 
+http.route({
+  path: "/n8n/workflow-error",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const signed = await readSigned(req);
+    if ("error" in signed) return signed.error;
+
+    const { executionId, workflow, node, message } = signed.body;
+    if (typeof executionId !== "string" || executionId.length === 0) return json(400, { error: "executionId is required" });
+    if (typeof workflow !== "string" || workflow.length === 0) return json(400, { error: "workflow is required" });
+    if (typeof message !== "string") return json(400, { error: "message is required" });
+    if (node !== undefined && node !== null && typeof node !== "string") return json(400, { error: "node must be a string" });
+
+    console.error(`n8n workflow failed: ${workflow}${node ? ` at "${node}"` : ""}: ${message.slice(0, 200)}`);
+    const result = await ctx.runMutation(internal.health.recordIntegrationFailure, {
+      externalId: `n8n:${executionId}`,
+      workflow,
+      node: typeof node === "string" ? node : undefined,
+      message,
+    });
+    return json(200, { ok: true, created: result.created });
+  }),
+});
+
 export default http;
